@@ -26,13 +26,27 @@ export default function Asistente() {
         const assistantMsg: Msg = { id: crypto.randomUUID(), role: 'assistant', content: data.reply ?? 'Configura OPENAI_API_KEY para habilitar el chat.' }
         setMessages(m => [...m, assistantMsg])
       } else {
-        const res = await fetch('/api/image', { method: 'POST', body: JSON.stringify({ prompt: input }) })
+        const res = await fetch('/api/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: input }),
+          signal: AbortSignal.timeout(180_000),
+        })
         const data = await res.json()
+        if (!res.ok || !data.url) {
+          throw new Error(data.error || 'No se pudo generar la imagen')
+        }
         const img: Msg = { id: crypto.randomUUID(), role: 'image', content: data.url }
         setMessages(m => [...m, img])
       }
-    } catch (e:any) {
-      setMessages(m => [...m, { id: crypto.randomUUID(), role: 'assistant', content: 'Hubo un error. Si estás en demo, la imagen gratuita puede tardar o fallar.' }])
+    } catch (e: unknown) {
+      const msg =
+        e instanceof Error && e.name === 'AbortError'
+          ? 'La petición tardó demasiado. Prueba otra vez; si sigue igual, en .env.local puedes poner HUGGINGFACE_IMAGE_ONLY_POLLINATIONS=1 para imágenes rápidas sin esperar a Hugging Face.'
+          : e instanceof Error
+            ? e.message
+            : 'Hubo un error. Si usas Hugging Face, el modelo puede estar cargando: espera e inténtalo de nuevo.'
+      setMessages(m => [...m, { id: crypto.randomUUID(), role: 'assistant', content: msg }])
     } finally { setIsSending(false); setInput('') }
   }
 
@@ -44,7 +58,7 @@ export default function Asistente() {
           <span className="text-sm text-neutral-400">Modo:</span>
           <select className="input w-40" value={mode} onChange={e=>setMode(e.target.value as any)}>
             <option value="chat">Chat (texto)</option>
-            <option value="image">Generar imagen (gratis)</option>
+            <option value="image">Generar imagen</option>
           </select>
         </div>
       </div>
